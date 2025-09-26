@@ -435,8 +435,15 @@ namespace JPH
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Simple vertex + fragment shaders. Minimal features: position + color, MVP uniform.
-	static const char* g_vs_src = R"glsl(
+
+	class ThreadSafeDebugRenderer : public JPH::DebugRendererSimple
+	{
+		private:
+
+			// vertex and fragmenst shaders used for lines & triangles
+			// colors are floats 
+
+		   const char* g_vs_src = R"glsl(
 											#version 330 core
 											layout(location = 0) in vec3 inPos;
 											layout(location = 1) in vec4 inColor;
@@ -448,19 +455,17 @@ namespace JPH
 											}
 											)glsl";
 
-	static const char* g_fs_src = R"glsl(
+			const char* g_fs_src = R"glsl(
 											#version 330 core
 											in vec4 vColor;
 											out vec4 oColor;
 											void main() {
 												oColor = vColor;
 											}
-											)glsl";
+										  )glsl";
 
-	class ThreadSafeDebugRenderer : public JPH::DebugRendererSimple
-	{
-			// POD vertex used for lines & triangles (float colors for simplicity)
-			
+			// debug drawing data structures
+
 			struct Vertex 
 			{
 				float x, y, z;
@@ -493,106 +498,187 @@ namespace JPH
 				std::vector<DebugLine> lines;
 				std::vector<DebugTri> tris;
 				std::vector<DebugText> texts;
-				void clear() { lines.clear(); tris.clear(); texts.clear(); }
-				void swap(DebugBuffer& other) {
+				
+				void clear() 
+				{
+					lines.clear(); 
+					tris.clear(); 
+					texts.clear(); 
+				}
+				
+				void swap(DebugBuffer& other) 
+				{
 					lines.swap(other.lines);
 					tris.swap(other.tris);
 					texts.swap(other.texts);
 				}
+
 			};
 
-			// buffers:
-			DebugBuffer mPhysicsBuffer; // appended by physics thread (protected by mutex)
-			DebugBuffer mRenderBuffer;  // consumed by render thread (no lock while rendering)
+			// buffers protected by mutex
+			
+			DebugBuffer mPhysicsBuffer; // appended by physics thread 
+			DebugBuffer mRenderBuffer;  // used by render thread 
 			std::mutex mMutex;
 
-			// GL objects:
-			GLuint mLineVAO = 0;
-			GLuint mLineVBO = 0;
-			GLuint mTriVAO = 0;
-			GLuint mTriVBO = 0;
-			GLuint mShaderProgram = 0;
-			GLint  mUniformViewProj = -1;
+			// Opengl objects
+			
+			GLuint mLineVAO;
+			GLuint mLineVBO;
+			GLuint mTriVAO;
+			GLuint mTriVBO;
+			GLuint mShaderProgram;
+			GLint  mUniformViewProj;
 
-			// CPU-side temporary vertex arrays used during upload on render thread
+			// Temporary vertex arrays used during upload on render thread
+			
 			std::vector<Vertex> mLineVertices;
 			std::vector<Vertex> mTriVertices;
 
-			// settings
-			float mLineWidth = 1.0f;
-			bool  mDrawTriangles = false;
-		
-			// helpers
-
 			// -------------------------------------------------------------------------------
+			// Text rendering
 
 			void RenderTextGL(const DebugText& t, const float viewProj[16])
 			{
-				// Minimal placeholder: user should replace with their text renderer.
-				// Convert 3D position to screen-space using viewProj if needed.
-				// Here we simply print to stdout as a stub.
-				//(void)viewProj;
-				//std::string s = t.text;
-				// For debugging, optionally print text to console (not optimal).
-				// In real engine: transform position, draw glyph quads with atlas, etc.
-				// std::cout << "DebugText: " << s << " at (" << t.pos.GetX() << "," << t.pos.GetY() << "," << t.pos.GetZ() << ")\n";
+				// placeholder for text renderer.
 			}
 
 			// -------------------------------------------------------------------------------
+			//  Gathers triangles from jolt and passes to vertex buffers
 
 			void UploadAndDrawTris(const float viewProj[16])
 			{
-				if (mRenderBuffer.tris.empty() || !mDrawTriangles)
+				if (mRenderBuffer.tris.empty() )
 					return;
 
 				// Build triangle vertices: each tri -> 3 vertices
+
 				mTriVertices.clear();
 				mTriVertices.reserve(mRenderBuffer.tris.size() * 3);
-				for (const auto& t : mRenderBuffer.tris) {
-					Vertex v1, v2, v3;
-					v1.x = (float)t.v1.GetX(); v1.y = (float)t.v1.GetY(); v1.z = (float)t.v1.GetZ();
-					v2.x = (float)t.v2.GetX(); v2.y = (float)t.v2.GetY(); v2.z = (float)t.v2.GetZ();
-					v3.x = (float)t.v3.GetX(); v3.y = (float)t.v3.GetY(); v3.z = (float)t.v3.GetZ();
-					v1.r = t.color.r / 255.0f; v1.g = t.color.g / 255.0f; v1.b = t.color.b / 255.0f; v1.a = t.color.a / 255.0f;
-					v2 = v1; v3 = v1;
-					mTriVertices.push_back(v1); mTriVertices.push_back(v2); mTriVertices.push_back(v3);
+			
+				JPH::Color col{1,1,1,1};
+
+				for (const auto& t : mRenderBuffer.tris) 
+				{
+					Vertex v1{}, v2{}, v3{};
+			
+					v1.x = (float)t.v1.GetX(); 
+					v1.y = (float)t.v1.GetY(); 
+					v1.z = (float)t.v1.GetZ();
+					
+					v2.x = (float)t.v2.GetX(); 
+					v2.y = (float)t.v2.GetY(); 
+					v2.z = (float)t.v2.GetZ();
+					
+					v3.x = (float)t.v3.GetX(); 
+					v3.y = (float)t.v3.GetY(); 
+					v3.z = (float)t.v3.GetZ();
+
+					v1.r = col.r; 
+					v1.g = col.g; 
+					v1.b = col.b; 
+					v1.a = col.a;
+					
+					v2.r = col.r; 
+					v2.g = col.g; 
+					v2.b = col.b; 
+					v2.a = col.a;
+					
+					v3.r = col.r; 
+					v3.g = col.g; 
+					v3.b = col.b; 
+					v3.a = col.a;
+
+					// v1.r = t.color.r / 255.0f; 
+					// v1.g = t.color.g / 255.0f; 
+					// v1.b = t.color.b / 255.0f; 
+					// v1.a = t.color.a / 255.0f;
+
+					// v2.r = t.color.r / 255.0f; 
+					// v2.g = t.color.g / 255.0f; 
+					// v2.b = t.color.b / 255.0f; 
+					// v2.a = t.color.a / 255.0f;
+
+					// v31.r = t.color.r / 255.0f; 
+					// v3.g = t.color.g / 255.0f; 
+					// v3.b = t.color.b / 255.0f; 
+					// v3.a = t.color.a / 255.0f;
+
+					mTriVertices.push_back(v1); 
+					mTriVertices.push_back(v2); 
+					mTriVertices.push_back(v3);
 				}
+
+				// Upload with orphaning for performance reasons
 
 				glBindBuffer(GL_ARRAY_BUFFER, mTriVBO);
 				glBufferData(GL_ARRAY_BUFFER, mTriVertices.size() * sizeof(Vertex), nullptr, GL_DYNAMIC_DRAW); // orphan
 				glBufferSubData(GL_ARRAY_BUFFER, 0, mTriVertices.size() * sizeof(Vertex), mTriVertices.data());
-
+				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 				glUseProgram(mShaderProgram);
 				glUniformMatrix4fv(mUniformViewProj, 1, GL_FALSE, viewProj);
 				glBindVertexArray(mTriVAO);
-				glDrawArrays(GL_TRIANGLES, 0, (GLsizei)mTriVertices.size());
+					glDrawArrays(GL_TRIANGLES, 0, (GLsizei)mTriVertices.size());
 				glBindVertexArray(0);
 				glUseProgram(0);
+				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 			}
 
 			// -------------------------------------------------------------------------------
+			//  Gathers lines from jolt and passes to vertex buffers
 
 			void UploadAndDrawLines(const float viewProj[16])
 			{
 				if (mRenderBuffer.lines.empty())
 					return;
 
-				// Build line vertex array: each line -> two vertices
+				// Build line vertex array: each line is two vertices
+				
 				mLineVertices.clear();
 				mLineVertices.reserve(mRenderBuffer.lines.size() * 2);
-				for (const auto& ln : mRenderBuffer.lines) {
-					Vertex a, b;
-					a.x = (float)ln.from.GetX(); a.y = (float)ln.from.GetY(); a.z = (float)ln.from.GetZ();
-					b.x = (float)ln.to.GetX();   b.y = (float)ln.to.GetY();   b.z = (float)ln.to.GetZ();
+				
+				JPH::Color col{ 1,1,1,1 };
+
+				for (const auto& ln : mRenderBuffer.lines) 
+				{
+					Vertex a{}, b{};
+
+					a.x = (float)ln.from.GetX(); 
+					a.y = (float)ln.from.GetY(); 
+					a.z = (float)ln.from.GetZ();
+					
+					b.x = (float)ln.to.GetX();   
+					b.y = (float)ln.to.GetY();   
+					b.z = (float)ln.to.GetZ();
+				
 					// Jolt::Color is typically 0..255; convert to 0..1
-					a.r = ln.color.r / 255.0f; a.g = ln.color.g / 255.0f; a.b = ln.color.b / 255.0f; a.a = ln.color.a / 255.0f;
-					b = a;
-					b.x = (float)ln.to.GetX(); b.y = (float)ln.to.GetY(); b.z = (float)ln.to.GetZ();
+				
+					a.r = col.r; 
+					a.g = col.g; 
+					a.b = col.b; 
+					a.a = col.a;
+
+					b.r = col.r;
+					b.g = col.g;
+					b.b = col.b;
+					b.a = col.a;
+
+				//	a.r = ln.color.r / 255.0f; 
+				//	a.g = ln.color.g / 255.0f; 
+				//	a.b = ln.color.b / 255.0f; 
+				//	a.a = ln.color.a / 255.0f;
+					
+				//	b.r = ln.color.r / 255.0f;
+				//	b.g = ln.color.g / 255.0f;
+				//	b.b = ln.color.b / 255.0f;
+				//	b.a = ln.color.a / 255.0f;
+
 					mLineVertices.push_back(a);
 					mLineVertices.push_back(b);
 				}
 
-				// Upload with orphaning for performance
+				// Upload with orphaning for performance reasons
+
 				glBindBuffer(GL_ARRAY_BUFFER, mLineVBO);
 				glBufferData(GL_ARRAY_BUFFER, mLineVertices.size() * sizeof(Vertex), nullptr, GL_DYNAMIC_DRAW); // orphan
 				glBufferSubData(GL_ARRAY_BUFFER, 0, mLineVertices.size() * sizeof(Vertex), mLineVertices.data());
@@ -601,13 +687,17 @@ namespace JPH
 				glUseProgram(mShaderProgram);
 				glUniformMatrix4fv(mUniformViewProj, 1, GL_FALSE, viewProj);
 				glBindVertexArray(mLineVAO);
-				glLineWidth(mLineWidth);
+				glLineWidth(1.0f);
+				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 				glDrawArrays(GL_LINES, 0, (GLsizei)mLineVertices.size());
 				glBindVertexArray(0);
 				glUseProgram(0);
+				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
 			}
 
 			// -------------------------------------------------------------------------------
+			// compile shaders
 
 			GLuint CompileShader(GLenum type, const char* src)
 			{
@@ -627,8 +717,9 @@ namespace JPH
 			}
 
 			// -------------------------------------------------------------------------------
+			// create shaders
 
-			void BuildShader()
+			void InitShaders()
 			{
 				GLuint vs = CompileShader(GL_VERTEX_SHADER, g_vs_src);
 				GLuint fs = CompileShader(GL_FRAGMENT_SHADER, g_fs_src);
@@ -651,24 +742,14 @@ namespace JPH
 			}
 
 			// -------------------------------------------------------------------------------
+			// initialize opengl , load sahders and created vaos and vbos
 
-			void DestroyGL()
-			{
-				if (mLineVBO) { glDeleteBuffers(1, &mLineVBO); mLineVBO = 0; }
-				if (mLineVAO) { glDeleteVertexArrays(1, &mLineVAO); mLineVAO = 0; }
-				if (mTriVBO) { glDeleteBuffers(1, &mTriVBO); mTriVBO = 0; }
-				if (mTriVAO) { glDeleteVertexArrays(1, &mTriVAO); mTriVAO = 0; }
-				if (mShaderProgram) { glDeleteProgram(mShaderProgram); mShaderProgram = 0; }
-			}
-
-			// ---------------- GL helpers ----------------
-
-			void EnsureGLInitialized()
+			void InitGL()
 			{
 				if (mShaderProgram != 0)
 					return;
 
-				BuildShader();
+				InitShaders();
 
 				// Create line VAO/VBO
 				glGenVertexArrays(1, &mLineVAO);
@@ -701,11 +782,8 @@ namespace JPH
 				mUniformViewProj = glGetUniformLocation(mShaderProgram, "uViewProj");
 			}
 
-		public:
-		
-
 			// -------------------------------------------------------------------------------
-			// Jolt callbacks (called from physics thread)
+			// Jolt line drawing callback
 
 			void DrawLine(JPH::RVec3Arg inFrom, JPH::RVec3Arg inTo, JPH::ColorArg inColor) override
 			{
@@ -718,67 +796,65 @@ namespace JPH
 			}
 
 			// -------------------------------------------------------------------------------
+			// Jolt triangle drawing callback
+			// jolt calls this function for drawing filled triangles
+			// but here i draw everything in wireframe
 
 			void DrawTriangle(JPH::RVec3Arg inV1, JPH::RVec3Arg inV2, JPH::RVec3Arg inV3,
 							  JPH::ColorArg inColor, ECastShadow inCastShadow) override
 			{
-				DebugTri cmd;
+				DebugTri cmd{};
 				cmd.v1 = inV1;
 				cmd.v2 = inV2;
 				cmd.v3 = inV3;
 				cmd.color = inColor;
-				cmd.cast_shadow = (inCastShadow == ECastShadow::On);
+				cmd.cast_shadow = (inCastShadow == ECastShadow::Off);
 				std::lock_guard<std::mutex> lk(mMutex);
 				mPhysicsBuffer.tris.push_back(cmd);
 			}
 
 			// -------------------------------------------------------------------------------
+			// text drawing
 
-			void DrawText3D(JPH::RVec3Arg inPosition, const std::string_view &inString,
+			void DrawText3D(JPH::RVec3Arg inPosition, const std::string_view& inString,
 							JPH::ColorArg inColor, float inHeight) override
 			{
-				DebugText cmd;
+				DebugText cmd{};
 				cmd.pos = inPosition;
-				cmd.text = std::string(inString); // copy to own storage
+				cmd.text = std::string(inString);
 				cmd.color = inColor;
 				cmd.height = inHeight;
 				std::lock_guard<std::mutex> lk(mMutex);
 				mPhysicsBuffer.texts.push_back(std::move(cmd));
 			}
 
+		public:
+
+			// -------------------------------------------------------------------------------
 			// Call from render thread (with GL context current) each frame:
 			// Main render function: must run on render thread with GL context
 
 			void RenderAndClear(const float viewProj[16])
 			{
-				// Ensure GL objects exist
-				EnsureGLInitialized();
+				// after swap, render buffer contains 
+				// the latest commands and physicsBuffer can be reused
+				
+				std::lock_guard<std::mutex> lk(mMutex);
+				mPhysicsBuffer.swap(mRenderBuffer);
 
 				// Upload & draw lines and triangles
+				
 				UploadAndDrawLines(viewProj);
 				UploadAndDrawTris(viewProj);
 
 				// Draw texts (simple)
+				
 				for (const auto& tx : mRenderBuffer.texts)
 					RenderTextGL(tx, viewProj);
 
 				// Clear the render buffer after consuming
+				
 				mRenderBuffer.clear();
-			}
-
-			// Optional: set line thickness (GL line width) and triangle fill toggle
-
-			void SetLineWidth(float w) { mLineWidth = w; }
-			void SetDrawTriangles(bool v) { mDrawTriangles = v; }
-
-			// -------------------------------------------------------------------------------
-			// Called by physics thread once per physics tick to hand geometry to render thread
-
-			void PublishForRender()
-			{
-				std::lock_guard<std::mutex> lk(mMutex);
-				mPhysicsBuffer.swap(mRenderBuffer);
-				// after swap, render buffer contains the latest commands and physicsBuffer can be reused
 			}
 
 			//------------------------------------------------------------------
@@ -786,14 +862,27 @@ namespace JPH
 
 			ThreadSafeDebugRenderer()
 			{
+				mLineVAO		 = 0;
+				mLineVBO		 = 0;
+				mTriVAO			 = 0;
+				mTriVBO			 = 0;
+				mShaderProgram   = 0;
+				mUniformViewProj = 0;
+
+				// initialize opengl
+				InitGL();
+
 				// Initialize Jolt hook
-				this->Initialize();
-				// GL objects are lazily created on first RenderAndClear call; or call EnsureGLInitialized() now if you prefer.
+				Initialize();
 			}
 
 			~ThreadSafeDebugRenderer() override
 			{
-				DestroyGL();
+				if (mLineVBO) { glDeleteBuffers(1, &mLineVBO); mLineVBO = 0; }
+				if (mLineVAO) { glDeleteVertexArrays(1, &mLineVAO); mLineVAO = 0; }
+				if (mTriVBO) { glDeleteBuffers(1, &mTriVBO); mTriVBO = 0; }
+				if (mTriVAO) { glDeleteVertexArrays(1, &mTriVAO); mTriVAO = 0; }
+				if (mShaderProgram) { glDeleteProgram(mShaderProgram); mShaderProgram = 0; }
 			}
 
 };
@@ -1002,8 +1091,8 @@ namespace JPH
 				// variant of this. We're going to use the locking version (even though we're not planning to access bodies from multiple threads)
 				BodyInterface = &PhysicsSystem->GetBodyInterface();
 
-				BodyManager::DrawSettings drawsettings;
-				drawsettings.mDrawShapeWireframe = true;
+			//	BodyManager::DrawSettings drawsettings;
+			//	drawsettings.mDrawShapeWireframe = true;
 
 				// create the box shape (convex)
 
