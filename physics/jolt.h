@@ -286,155 +286,7 @@ namespace JPH
 
 	};
 
-	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	// physics rendering
-
-	struct LineData
-	{
-		glm::vec4 position;
-		glm::vec4 color;
-		LineData(const glm::vec4& p, const glm::vec4 c) :position(p), color(c)
-		{
-		}
-	};
-	
-	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	class PhysicsDebugRenderer : public JPH::DebugRendererSimple
-	{
-		private:
-
-			GLuint DynamicVAO;
-			GLuint DynamicVBO;
-			GLuint ShaderProgram;
-			GLuint ColorLocation;
-			vml::shaders::GlShaderProgram* SingleColorShader;
-			std::vector<LineData> Lines;
-
-			// shader filename
-			const std::string ShaderFilename = vml::utils::GlobalPaths::GetInstance()->GetFullDebugPath() + "\\shaders\\debug_single_color.shd";
-
-		public:
-
-			// -------------------------------------------------------------------
-
-			virtual void DrawLine(JPH::RVec3Arg from, JPH::RVec3Arg to, JPH::ColorArg color) override
-			{
-				Lines.push_back(LineData(glm::vec4(from.GetX(), from.GetY(), from.GetZ(), 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)));
-				Lines.push_back(LineData(glm::vec4(to.GetX(), to.GetY(), to.GetZ(), 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)));
-			}
-
-			// -------------------------------------------------------------------
-
-			virtual void DrawTriangle(JPH::RVec3Arg v1, JPH::RVec3Arg v2, JPH::RVec3Arg v3, JPH::ColorArg color, JPH::DebugRenderer::ECastShadow inCastShadow) override
-			{
-				DrawLine(v1, v2, color);
-				DrawLine(v2, v3, color);
-				DrawLine(v3, v1, color);
-			}
-
-			// -------------------------------------------------------------------
-
-			virtual void DrawText3D(JPH::RVec3Arg inPosition, const std::string_view& inString, JPH::ColorArg inColor, float inHeight) override
-			{
-//				std::cout << inString << std::endl;
-			}
-
-			// -------------------------------------------------------------------
-
-			void Clear()
-			{
-				Lines.clear();
-			}
-
-			// -------------------------------------------------------------------
-
-			void DrawDebugVAO(vml::views::View* view)
-			{
-				if (Lines.empty())
-					return;
-		
-				// get parent matrix pointer
-
-				glm::mat4 M(1.0f);
-				glm::mat4 MV(1.0f);
-				glm::mat4 MVP(1.0f);
-				glm::mat3 NV(1.0f);
-
-				float* mptr = glm::value_ptr(M);
-
-				// scale parent matrix
-
-				mptr[ 0] = 1; mptr[ 1] = 0; mptr[ 2] = 0; mptr[ 3] = 0;
-				mptr[ 4] = 0; mptr[ 5] = 1; mptr[ 6] = 0; mptr[ 7] = 0;
-				mptr[ 8] = 0; mptr[ 9] = 0; mptr[10] = 1; mptr[11] = 0;
-				mptr[12] = 0; mptr[13] = 0;	mptr[14] = 0; mptr[15] = 1;
-
-				MVP = view->GetViewProjection() * M;
-
-				// get shader
-
-				GLuint Id = SingleColorShader->GetID();
-
-				glUseProgram(Id);
-
-				// set shader locations
-
-				glUniformMatrix4fv(SingleColorShader->GetViewMatrixLocation(), 1, GL_FALSE, view->GetVptr());
-				glUniformMatrix4fv(SingleColorShader->GetProjectionMatrixLocation(), 1, GL_FALSE, view->GetPptr());
-				glUniformMatrix4fv(SingleColorShader->GetModelMatrixLocation(), 1, GL_FALSE, glm::value_ptr(M));
-				glUniformMatrix3fv(SingleColorShader->GetNormalMatrixLocation(), 1, GL_FALSE, glm::value_ptr(NV));
-				glUniformMatrix4fv(SingleColorShader->GetModelViewMatrixLocation(), 1, GL_FALSE, glm::value_ptr(MV));
-				glUniformMatrix4fv(SingleColorShader->GetModelViewProjectionMatrixLocation(), 1, GL_FALSE, glm::value_ptr(MVP));
-				glUniform4f(ColorLocation, 1, 0, 0, 1);
-
-				// draw mesh
-
-				glEnable(GL_CULL_FACE);
-				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-
-				glBindVertexArray(DynamicVAO);
-				glBindBuffer(GL_ARRAY_BUFFER, DynamicVBO);
-				glBufferData(GL_ARRAY_BUFFER, Lines.size() * sizeof(Lines), Lines.data(), GL_DYNAMIC_DRAW);
-
-				glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(LineData), (void*)offsetof(LineData, position));
-				glEnableVertexAttribArray(0);
-				glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(LineData), (void*)offsetof(LineData, color));
-				glEnableVertexAttribArray(1);
-
-				glDrawArrays(GL_LINES, 0, (GLsizei)Lines.size());
-
-				glBindVertexArray(0);
-			}
-
-			// -------------------------------------------------------------------
-			// ctor / dtor
-
-			PhysicsDebugRenderer()
-			{
-				SingleColorShader = vml::stores::ShaderStore->Load<vml::shaders::GlShaderProgram>(ShaderFilename, {});
-				// shader locations
-				ShaderProgram = SingleColorShader->GetID();
-				glUseProgram(ShaderProgram);
-				ColorLocation = glGetUniformLocation(ShaderProgram, "Color");
-				glUseProgram(0);
-				glGenVertexArrays(1, &DynamicVAO);
-				glGenBuffers(1, &DynamicVBO);
-				
-				Initialize();
-			}
-
-			~PhysicsDebugRenderer()
-			{
-				if (DynamicVAO) glDeleteVertexArrays(1, &DynamicVAO);
-				if (DynamicVBO) glDeleteBuffers(1, &DynamicVBO);
-				vml::stores::ShaderStore->UnLoad(ShaderFilename);
-			}
-
-	};
-
 	////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 	class ThreadSafeDebugRenderer : public JPH::DebugRendererSimple
 	{
@@ -981,17 +833,14 @@ namespace JPH
 
 			MyBodyActivationListener BodyActivationListener;
 			MyContactListener ContactListener;
-//			PhysicsDebugRenderer* DebugRenderer;
 
 		public:
 
 			JPH::BodyInterface* BodyInterface;
-
 			JPH::BodyID collisionMapId;
 			JPH::RefConst<JPH::Shape> mesh_shape;
 			JPH::RefConst<JPH::Shape> BoxShape;
 			JPH::RefConst<JPH::Shape> SphereShape;
-
 			ThreadSafeDebugRenderer* gDebugRenderer;
 
 			// ---------------------------------------------------------------------------
@@ -1130,7 +979,6 @@ namespace JPH
 				BodyInterface->DestroyBody(collisionMapId);
 
 				vml::os::SafeDelete(gDebugRenderer);
-	//			vml::os::SafeDelete(DebugRenderer);
 				vml::os::SafeDelete(TempAllocator);
 				vml::os::SafeDelete(JobSystem);
 				vml::os::SafeDelete(PhysicsSystem);
@@ -1152,7 +1000,6 @@ namespace JPH
 				JobSystem = nullptr;
 				PhysicsSystem = nullptr;
 				BodyInterface = nullptr;
-		//		DebugRenderer = nullptr;
 				gDebugRenderer=nullptr;
 
 				MaxBodies = 1024u;
