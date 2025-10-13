@@ -238,20 +238,20 @@ private:
 	}
 
 	/// Free memory
-	inline void				free()
+	inline void				deallocate()
 	{
 		get_allocator().deallocate(mElements, mCapacity);
 		mElements = nullptr;
 		mCapacity = 0;
 	}
 
-	/// Destroy all elements and free memory
+	/// Destroy all elements and deallocate memory
 	inline void				destroy()
 	{
 		if (mElements != nullptr)
 		{
 			clear();
-			free();
+			deallocate();
 		}
 	}
 
@@ -411,7 +411,7 @@ public:
 		if (mElements != nullptr)
 		{
 			if (mSize == 0)
-				free();
+				deallocate();
 			else if (mCapacity > mSize)
 				reallocate(mSize);
 		}
